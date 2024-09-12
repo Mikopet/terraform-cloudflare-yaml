@@ -9,7 +9,7 @@ resource "cloudflare_record" "record" {
   allow_overwrite = try(each.value.allow_overwrite, false)
   proxied         = try(each.value.proxied, false)
 
-  value    = try(each.value.value, null)
+  content  = try(each.value.content, null)
   priority = try(each.value.priority, null)
   comment  = try(each.value.comment, null)
 

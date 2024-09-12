@@ -55,5 +55,5 @@ variable "records" {
     ))
   }
 
-  # validation: if it has no `value` attr, data block must present. vice versa.
+  # TODO: validation for conflicting `data` and `content` attributes
 }
