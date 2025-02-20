@@ -14,13 +14,15 @@ Perhaps the most simplistic configuration is something like this:
 
 ```hcl
 data "cloudflare_zone" "zone" {
-  name = "example.com"
+  filter = {
+    name = "example.com"
+  }
 }
 
-module "cf-yaml" {
+module "cf_records" {
   source = "mikopet/yaml/cloudflare"
 
-  zone_id = data.cloudflare_zone.zone.id
+  zone_id = data.cloudflare_zone.zone.zone_id
   records = yamldecode(<<-YAML
 A:
   example.com:
@@ -28,6 +30,9 @@ A:
 YAML
 )
 ```
+> [!NOTE]
+> **At the time of writing the cloudflare documentation is incorrect!**  
+> The currently working attribute is presented above: `.zone_id`.
 
 But obviously the point of this module is to have a lot of configuration for records,
 and not having them in HCL. While HCL is okay for lots of things, it's inconvinient
@@ -40,7 +45,6 @@ defaults: &defaults
   # TTL must be between 60 and 86400 seconds, or 1 for Automatic
   ttl: 3600
   proxied: false
-  allow_overwrite: false
   comment: 'via terraform'
   tags:
     - &dt 'tf'
@@ -71,7 +75,6 @@ The result will be in HCL (inside the module):
 ```hcl
 {
   "CNAME-@" = {
-    allow_overwrite = false
     comment         = "main website"
     name            = "@"
     proxied         = true
@@ -84,7 +87,6 @@ The result will be in HCL (inside the module):
     value           = "github.io"
   }
   CNAME-subdomain = {
-    allow_overwrite = false
     comment         = "via terraform"
     name            = "subdomain"
     proxied         = false
@@ -156,17 +158,13 @@ locals {
   dns_config = templatefile(
     "${path.module}/config/dns.yaml",
     {
-      # These two could come from even Terrform Cloud variable sets...
-      allow_overwrite = var.cloudflare_allow_overwrites
-      domain          = var.apex_domain
+      domain = var.apex_domain
     }
   )
 }
 
 module "cf_records" {
-  source = "mikopet/yaml/cloudflare"
-
-  zone_id = data.cloudflare_zone.zone.id
+  # ...
   records = yamldecode(local.dns_config).records
 }
 ```
@@ -174,22 +172,17 @@ module "cf_records" {
 and the YAML for this:
 
 ```yaml
-defaults: &defaults
-  allow_overwrite: ${allow_overwrite}
 records:
   CNAME:
     key1._domainkey:
-      <<: *defaults
       value: 'key1.${domain}._domainkey.migadu.com.'
       tags: ['tf', 'mail', 'migadu', 'dkim']
       comment: 'DKIM primary key'
     key2._domainkey:
-      <<: *defaults
       value: 'key2.${domain}._domainkey.migadu.com.'
       tags: ['tf', 'mail', 'migadu', 'dkim']
       comment: 'DKIM secondary key'
     key3._domainkey:
-      <<: *defaults
       value: 'key3.${domain}._domainkey.migadu.com.'
       tags: ['tf', 'mail', 'migadu', 'dkim']
       comment: 'DKIM tertiary key'
@@ -204,6 +197,59 @@ output "debug" {
   value = module.cf_records.debug
 }
 ```
+
+## Troubleshoot
+
+The module itself is not fitted for reporting errors, so any error you encounter
+is most probably coming from Cloudflare.
+
+One of the problems could be that you don't have premium subscription to use tags.
+Remove tag definitions.
+
+### Migrating from v4 to v5
+
+Fortunately (for you) I've suffered through the failures to present you a working solution.
+
+#### Preparation
+You must update your code as the [migration guide] suggests.
+If you were getting the zone ID with data resource, the syntax changed to:
+```terraform
+data "cloudflare_zone" "zone" {
+  filter = {
+    name = "example.com"
+  }
+}
+```
+
+> [!NOTE]
+> **At the time of writing the cloudflare documentation is incorrect!**  
+> Where you are referencing this data resource, the evidently correct way may be not `.id` but `.zone_id`!
+
+If you were also using `allow_overwrite`, remove that too.
+
+#### The Hard Part
+Cloudflare suggests, that you should update to the latest v4, before upgrading to v5.
+I did that to no avail, even with refreshed state I encountered many errors.
+
+But at this point you should not see more errors than this one type:
+```
+Error: no schema available for module.cf_records.cloudflare_record.record["CNAME-www"] while reading state; this is a bug in Terraform and should be reported
+```
+
+The only way I was able to solve this without outage, is to remove the problematic resources from the state
+(including all related cloudflare resources listed at once):
+```bash
+$ terraform state rm data.cloudflare_zone.zone module.cf_records
+```
+
+And apply the new code.
+> [!WARNING]
+> For actually be able to successfully run the apply plan, you have to delete all related records first!
+
+> [!TIP]
+> As the migration guide suggests, you may skip the reprovision with `import` statements.  
+> I did not try that, as getting the IDs of the records seemed troublesonme...
+> but if minor DNS downtime is unacceptable for you... you may try it!
 
 ## Contribute
 

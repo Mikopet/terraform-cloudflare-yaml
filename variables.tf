@@ -1,15 +1,14 @@
 variable "zone_id" {
-  description = "Zone ID for the zone to put records in"
+  description = "The ID of the Zone to put the records in"
   type        = string
 }
 
 variable "records" {
-  description = "the DNS records grouped by record type"
+  description = "The DNS record definitions grouped by record type"
   # TODO: exhaustive type definition
   # type = map(map(object({
   #   name            = optional(string)
   #   ttl             = optional(number)
-  #   allow_overwrite = optional(bool)
   #   proxied         = optional(bool)
   #   value           = optional(string)
   #   priority        = optional(number)
